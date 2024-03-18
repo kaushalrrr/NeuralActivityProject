@@ -1,15 +1,29 @@
 ---
-title: "STA141-FinalProjectMain"
-author: "Kaushal"
-date: "2024-03-17"
+title: "Predictive Modeling of Feedback Type Based on Neural Activity and Visual Stimuli in Mice"
+author: "Kaushal Ramalingam"
+date: "2024-03-18"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+### Abstract:
 
-```{r}
+This study leverages neural activity data and visual stimuli information to predict feedback types in mouse decision-making processes, as per the experiments conducted by Steinmetz et al. (2019). We analyzed neural spike train data across 18 sessions from four mice to understand the correlation between visual cortex activity, stimulus contrast, and behavioral outcomes. Data preprocessing involved normalization of spike counts and extraction of relevant features, followed by k-means clustering to uncover patterns in neuronal firing related to the experimental conditions. A predictive model using logistic regression was then developed, incorporating cluster assignments and stimulus contrasts as explanatory variables. The model was evaluated using accuracy metrics and a confusion matrix on a held-out test set. Preliminary results indicate a nuanced relationship between neural activity and decision-making feedback, underscoring the complexity of neuronal encoding in sensory-driven behaviors. This report details the methodologies employed, discusses the findings in the context of neuroscientific inquiry, and highlights potential avenues for future research to build upon the established groundwork.
+
+### Introduction:
+
+The intricate relationship between neural activity and behavior forms the cornerstone of neuroscience. Recent advances have allowed for detailed recording and analysis of neural firing patterns, particularly in model organisms such as mice during behavioral tasks. The landmark study by Steinmetz et al. (2019) has been instrumental in providing a comprehensive dataset of neural activity from the visual cortex during a controlled decision-making process. The primary goal of this research is to decode the neuronal underpinnings that drive visual stimulus-based decision-making in mice.
+
+Understanding how the brain interprets and responds to varying levels of visual stimuli is fundamental to elucidating the broader principles of sensory processing and neural computation. In this context, the ability to predict behavioral outcomes—categorized as feedback types—based on neural spike train data offers a window into the cognitive mechanisms at play. Our study focuses on analyzing neural activity patterns across multiple sessions, involving several mice, to build a predictive framework that correlates with the given feedback types.
+
+The intricacies of this task involve parsing through complex, high-dimensional spike train data to discern patterns that are predictive of decision outcomes. Our approach integrates data preprocessing, feature extraction, clustering analysis, and predictive modeling to establish a link between the observed neuronal activity and the resultant feedback types. Through these methods, we aim to contribute to the existing body of knowledge by offering insights into how certain neural activity patterns may influence or predict decision-making behaviors in mice.
+
+This report outlines the process from initial data exploration to model development and validation. By dissecting the neural patterns receptive to visual stimuli and their association with behavioral feedback, we try to understand the predictive capacity of neural activity and our perception of sensory-driven decision-making processes in the brain.
+
+### Exploratory Data Analysis (EDA):
+```{r echo=FALSE}
 library(tidyverse)
 library(knitr)
 library(dplyr)
@@ -24,16 +38,20 @@ for(i in 1:18){
   session[[i]]=readRDS(paste('./sessions/session',i,'.rds',sep=''))
 }
 ```
-```{r}
+
+
+First, we are exploring the structure of the data we are presented with. Each session has 8 variables: contrast_left (left contrast value), contrast_right (right contrast value), feedback_type(whether mouse response was success or failure), mouse_name (name of the mouse experimented on), brain_area (region of the brain the neuron resides), date_exp (experimentation date), spks(neuron spikes), and time (time bins of trial). We see that in Session 7 trial 11, left_contrast value is 0, right_contrast value is 0 and feedback_type is -1 (failure). We also see a matrix of brain areas for each neuron in the session, indicating the diversity of brain regions stimulated during the trials.
+
+```{r echo=FALSE}
 names(session[[7]])
 session[[7]]$date_exp
 session[[7]]$contrast_left[[11]]
 session[[7]]$contrast_right[[11]]
 session[[7]]$feedback_type[[11]]
 session[[7]]$brain_area
-
 ```
-```{r}
+
+```{r echo=FALSE}
 n.session=length(session)
 
 meta <- tibble(
@@ -52,11 +70,19 @@ for(i in 1:n.session){
   meta[i,4]=length(tmp$feedback_type);
   meta[i,5]=mean(tmp$feedback_type+1)/2;
 }
-
-kable(meta, format = "html", table.attr = "class='table table-striped'",digits=2) 
-
 ```
-```{r}
+
+
+#### Figure 1:
+```{r echo=FALSE}
+
+kable(meta, format = "html", table.attr = "class='table table-striped'",digits=3)
+```
+*Figure 1 depicts summarized trial information regarding each of the 18 sessions. Mouse name, total brain regions activated, neurons activated, number of trials, and success rate computed by dividing number of successes by total number of trials are depicted for each session. This graph shows heterogeneity between sessions: each session contains a varying number of trials, neurons fired and brain areas, but more importantly varying success rates of experimentation.  
+
+
+#### Figure 2:
+```{r echo=FALSE}
 get_trail_data <- function(session_id, trail_id){
   spikes <- session[[session_id]]$spks[[trail_id]]
   if (any(is.na(spikes))){
@@ -92,7 +118,12 @@ full_tibble$contrast_diff <- abs(full_tibble$contrast_left-full_tibble$contrast_
 
 print(full_tibble)
 ```
-```{r}
+
+*Figure 2: We define two functions, get_trail_data and get_session_data, and then iterate through session IDs to aggregate data into a single tibble (full_tibble) that displays summarized neuron spike data by brain area for each trial, including the total spikes (region_sum_spike), the number of neurons (region_count), and the average spikes per neuron (region_mean_spike) within each brain area. It also displays trial metadata (much of which is displayed in Figure 1) along with columns like success (binary indicator derived from feedback_type, marking whether the trial was successful (1) or not (0)) and contrast_diff (the absolute difference between the contrast_left and contrast_right values, indicating the level of contrast disparity presented during the trial).
+
+
+#### Figure 3:
+```{r echo=FALSE, fig.align='center'}
 
 # Create a dataframe with unique brain_area values
 bardata <- data.frame(brain_area = unique(full_tibble$brain_area))
@@ -113,7 +144,40 @@ ggplot(bardata, aes(x = factor(brain_area), y = successes)) +
        y = "Successes")
 
 ```
-```{r}
+
+*Figure 3: We isolate brain area (categorical) along with number of successes(numerical) from Figure 2 and depict the two variables on a bar chart. We can see that certain brain areas like root, BLA, and DG are correlated with higher frequencies of success. It is important to note, however, that higher frequencies may not particularly correlate to higher success rates; there may be a higher proportion of neurons that belong to the same brain areas, skewing the true success rates of each brain area since only total success is calculated.
+
+
+#### Figure 4: 
+```{r echo=FALSE}
+# Calculate region success rate
+bardata <- bardata %>%
+  mutate(region_success_rate = successes / full_tibble$region_sum_spike[match(brain_area, full_tibble$brain_area)])
+
+# Print the updated dataframe
+print(bardata)
+
+# Barplot of Brain Area vs. Region Success Rate
+ggplot(bardata, aes(x = factor(brain_area), y = region_success_rate)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(title = "Bar Chart of Region Success Rate by Brain Area",
+       x = "Brain Area",
+       y = "Region Success Rate")
+```
+
+Figure 4: Figure 4 depicts brain area on the x-axis and brain area success rate on the y-axis. We can see that particular brain areas like PL, root, and SSp achieve distinctly higher success rates than the rest of the brain areas on the plot. By plotting brain area success rate and not total success on the y-axis, we correct for the discrepancies in interpretation from Figure 3.
+
+
+My findings during the EDA process pushed me to inquire further if brain area had a significant impact on neural spikes, and specifically on success rate in predicting feedback type. Using the information collected about heterogeneity and brain area, I proceeded to use clustering for the next steps to try to isolate similar groups of spikes. 
+
+### Data Integration:
+
+We wanted to test if k-means clustering can be performed to analyze the relationship between neural spike data and feedback type as a technique to reduce the complexity of our heterogenous data.
+
+
+#### Figure 5:
+```{r echo=FALSE}
 brain_area_data <- full_tibble %>%
   group_by(trail_id) %>%
   summarise(across(starts_with("region_mean_spike"), mean, na.rm = TRUE))
@@ -137,8 +201,46 @@ full_tibble <- full_tibble %>%
 full_tibble <- full_tibble %>%
   mutate(cluster = as.factor(cluster),
          feedback_type = as.factor(feedback_type))
+
+ggplot(full_tibble, aes(x = contrast_diff, y = feedback_type, color = cluster)) +
+  geom_jitter(alpha = 0.6, width = 0.2, height = 0.1) +
+  scale_color_manual(values = rainbow(length(unique(full_tibble$cluster)))) +
+  theme_minimal() +
+  labs(title = "Cluster Assignments on Contrast Difference and Feedback Type",
+       x = "Contrast Difference", y = "Feedback Type")
 ```
-```{r}
+
+*Figure 5: The scatter plot above illustrates the results of a k-means clustering algorithm applied to our neural activity dataset. The clustering is based on the average neural activity (mean spike count) across brain regions for each trial, with the data points representing individual trials colored according to their assigned cluster.
+
+##### Interpretation of Clusters:
+
+Clustering Variables: The k-means algorithm clustered the trials based on the mean neural activity (region_mean_spike) within each brain area, which is a proxy for the neurons' response to visual stimuli. Each cluster represents a group of trials with similar patterns of neural activity.
+
+Cluster Distribution: The horizontal bands suggest that the Feedback Type is binary, representing successful (1) and unsuccessful (-1) trials, which makes sense considering the context of our analysis. The distribution of clusters along the Contrast Difference axis indicates that this variable alone does not segregate the clusters, implying that the clustering is primarily informed by the similarity in neural response patterns rather than the stimulus contrast per se. However, for the purposes of this analysis, we will move forward with these clusters as a means of integration into our prediction model to see if these clusters can more accurately predict feedback_type. 
+
+
+### Predictive Modeling: 
+
+The predictors in our model are as follows:
+
+Cluster: This variable represents the cluster assignments obtained from the k-means clustering algorithm. Each trial is assigned to a specific cluster based on its neural activity patterns. The cluster variable serves as a categorical predictor in the logistic regression model.
+
+Contrast_diff: the difference between the contrasts of the left and right stimuli in each trial. It could be calculated as contrast_left - contrast_right. This variable captures the relative difference between the two stimuli and can influence the feedback type.
+
+Contrast_left & Contrast_right: variables provided in the session data
+
+
+
+Ultimately, the decision to utilize a logistic regresson model was reached. Many factors were considered in this approach, especially when predicting a binary outcome like feedback_type:
+
+1) Logistic regression provides interpretable results. The coefficients estimated by the model represent the log odds of the outcome variable. This allows for easy interpretation of how each predictor influences the likelihood of success or failure.
+
+2) Logistic regression can handle irrelevant predictors or predictors that do not influence the outcome variable well. It tends to give low weights to such predictors, effectively ignoring them in the model.
+
+3) Logistic regression is computationally efficient, making it suitable for large datasets with a binary outcome like the one we are working with.
+
+
+```{r echo=FALSE}
 # Split data into training and testing sets
 set.seed(123)
 train_indices <- createDataPartition(full_tibble$feedback_type, p = 0.8, list = FALSE)
@@ -153,16 +255,157 @@ model <- glm(feedback_type ~ cluster + contrast_diff + contrast_left + contrast_
 summary(model)
 
 ```
-```{r}
+
+
+
+
+```{r echo=FALSE}
 # Make predictions on the test data
 prediction_probs <- predict(model, test_data, type = "response")
 predicted_classes <- ifelse(prediction_probs > 0.5, 1, 0)
 
 # Create a confusion matrix to evaluate the model
 confusion_matrix <- table(Predicted = predicted_classes, Actual = test_data$feedback_type)
-confusion_matrix
+print(confusion_matrix)
 
 # Calculate accuracy and other metrics as needed
 accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
 print(paste("Accuracy:", accuracy))
 ```
+Initial split test data results: Our logistic model was found to have a 70.11% accuracy rate given the predictors used, indicating moderately good predictive capability.
+
+
+### Prediction performance on the test sets:
+```{r echo=FALSE}
+#### Test Data 1
+
+library(pROC)
+
+test1 <- readRDS(paste('./test/test',1,'.rds',sep=''))
+
+prepared_test1 <- get_session_data(session_id = 1)  
+
+prepared_test1$contrast_diff <- abs(prepared_test1$contrast_left - prepared_test1$contrast_right)
+
+prepared_test1 <- as.data.frame(prepared_test1)
+
+prepared_test1_agg <- prepared_test1 %>%
+  group_by(trail_id) %>%
+  summarise(across(starts_with("region_mean_spike"), mean, na.rm = TRUE))
+
+
+prepared_test1_scaled <- scale(select(prepared_test1_agg, -trail_id))
+
+# Function to find the nearest cluster center
+get_cluster <- function(data_point, centers) {
+  distances <- apply(centers, 1, function(center) sum((data_point - center)^2))
+  return(which.min(distances))
+}
+
+# Assign clusters to the scaled data
+prepared_test1_agg$cluster <- apply(prepared_test1_scaled, 1, function(row) get_cluster(row, clustering_results$centers))
+
+prepared_test1_final <- prepared_test1 %>%
+  left_join(prepared_test1_agg[, c("trail_id", "cluster")], by = "trail_id")
+
+prepared_test1_final$cluster <- as.factor(prepared_test1_final$cluster)
+
+predictors <- c("cluster", "contrast_diff", "contrast_left", "contrast_right")
+
+prepared_test1_for_prediction <- prepared_test1_final[, predictors]
+
+prediction_probs_test1 <- predict(model, prepared_test1_for_prediction, type = "response")
+predicted_classes_test1 <- ifelse(prediction_probs_test1 > 0.5, 1, 0)
+
+confusion_matrix_test1 <- table(Predicted = predicted_classes_test1, Actual = prepared_test1_final$feedback_type)
+print(confusion_matrix_test1)
+
+# Calculate accuracy
+accuracy_test1 <- sum(diag(confusion_matrix_test1)) / sum(confusion_matrix_test1)
+
+# Print accuracy
+print(paste("Accuracy on Test 1 Data:", accuracy_test1))
+
+# Compute the ROC curve
+roc_result <- roc(prepared_test1_final$feedback_type, prediction_probs_test1)
+
+# Calculate the AUC
+auc_test1 <- auc(roc_result)
+
+# Print the AUC
+print(paste("AUC for Test 1 Data:", auc_test1))
+
+# Plot the ROC curve
+plot(roc_result, main="ROC Curve for Test 1 Data")
+
+```
+```{r echo=FALSE}
+#### Test Data 2
+
+test2 <- readRDS(paste('./test/test', 2, '.rds', sep=''))
+
+prepared_test2 <- get_session_data(session_id = 2)
+
+prepared_test2$contrast_diff <- abs(prepared_test2$contrast_left - prepared_test2$contrast_right)
+
+prepared_test2 <- as.data.frame(prepared_test2)
+
+prepared_test2_agg <- prepared_test2 %>%
+  group_by(trail_id) %>%
+  summarise(across(starts_with("region_mean_spike"), mean, na.rm = TRUE))
+
+prepared_test2_scaled <- scale(select(prepared_test2_agg, -trail_id))
+
+get_cluster <- function(data_point, centers) {
+  distances <- apply(centers, 1, function(center) sum((data_point - center)^2))
+  return(which.min(distances))
+}
+
+prepared_test2_agg$cluster <- apply(prepared_test2_scaled, 1, function(row) get_cluster(row, clustering_results$centers))
+
+prepared_test2_final <- prepared_test2 %>%
+  left_join(prepared_test2_agg[, c("trail_id", "cluster")], by = "trail_id")
+
+prepared_test2_final$cluster <- as.factor(prepared_test2_final$cluster)
+
+predictors <- c("cluster", "contrast_diff", "contrast_left", "contrast_right")
+
+prepared_test2_for_prediction <- prepared_test2_final[, predictors]
+
+prediction_probs_test2 <- predict(model, prepared_test2_for_prediction, type = "response")
+predicted_classes_test2 <- ifelse(prediction_probs_test2 > 0.5, 1, 0)
+
+confusion_matrix_test2 <- table(Predicted = predicted_classes_test2, Actual = prepared_test2_final$feedback_type)
+print(confusion_matrix_test2)
+
+accuracy_test2 <- sum(diag(confusion_matrix_test2)) / sum(confusion_matrix_test2)
+
+print(paste("Accuracy on Test 2 Data:", accuracy_test2))
+
+# Compute the ROC curve
+roc_result_2 <- roc(prepared_test2_final$feedback_type, prediction_probs_test2)
+
+# Calculate the AUC
+auc_test2 <- auc(roc_result_2)
+
+# Print the AUC
+print(paste("AUC for Test 1 Data:", auc_test2))
+
+# Plot the ROC curve
+plot(roc_result_2, main="ROC Curve for Test 2 Data")
+```
+
+
+### Discussion:
+
+Through this project we aimed to build a predictive model to forecast the outcome of each trial based on neural activity data and stimulus features. Our analysis focused on understanding the impact of various predictors on the logistic regression model's performance.
+
+Upon exploration, we found that predictors such as the difference in contrast levels and the clustering of mean spike rates, along with brain area, exhibited noticeable influence on the logistic regression model. The contrast difference, reflecting the salience of visual stimuli, emerged as a significant predictor, indicating its importance in determining the trial outcome. Additionally, incorporating clustering of mean spike rates allowed us to capture underlying patterns in neural activity across sessions, contributing to the predictive power of the model.
+
+However, while our initial model showed promising results, there is still ample room for improvement. In future endeavors, we intend to explore additional data integration methods to incorporate more predictors and enhance the model's accuracy further. Potential avenues include leveraging advanced feature engineering techniques, exploring alternative machine learning algorithms beyond logistic regression, and incorporating domain-specific knowledge to refine the model's performance.
+
+By expanding our analysis to include a broader range of predictors and adopting more sophisticated modeling approaches, we aim to develop a more robust predictive model capable of accurately forecasting trial outcomes. Ultimately, such advancements hold the potential to deepen our understanding of neural processes underlying decision-making tasks and contribute to advancements in neuroscience research.
+
+
+##### Github Repo for Source Code: https://github.com/kaushalrrr/NeuralActivityProject
+
