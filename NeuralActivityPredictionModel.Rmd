@@ -73,12 +73,14 @@ for(i in 1:n.session){
 ```
 
 
+
 #### Figure 1:
 ```{r echo=FALSE}
 
 kable(meta, format = "html", table.attr = "class='table table-striped'",digits=3)
 ```
 *Figure 1 depicts summarized trial information regarding each of the 18 sessions. Mouse name, total brain regions activated, neurons activated, number of trials, and success rate computed by dividing number of successes by total number of trials are depicted for each session. This graph shows heterogeneity between sessions: each session contains a varying number of trials, neurons fired and brain areas, but more importantly varying success rates of experimentation.  
+
 
 
 #### Figure 2:
@@ -122,6 +124,7 @@ print(full_tibble)
 *Figure 2: We define two functions, get_trail_data and get_session_data, and then iterate through session IDs to aggregate data into a single tibble (full_tibble) that displays summarized neuron spike data by brain area for each trial, including the total spikes (region_sum_spike), the number of neurons (region_count), and the average spikes per neuron (region_mean_spike) within each brain area. It also displays trial metadata (much of which is displayed in Figure 1) along with columns like success (binary indicator derived from feedback_type, marking whether the trial was successful (1) or not (0)) and contrast_diff (the absolute difference between the contrast_left and contrast_right values, indicating the level of contrast disparity presented during the trial).
 
 
+
 #### Figure 3:
 ```{r echo=FALSE, fig.align='center'}
 
@@ -146,6 +149,7 @@ ggplot(bardata, aes(x = factor(brain_area), y = successes)) +
 ```
 
 *Figure 3: We isolate brain area (categorical) along with number of successes(numerical) from Figure 2 and depict the two variables on a bar chart. We can see that certain brain areas like root, BLA, and DG are correlated with higher frequencies of success. It is important to note, however, that higher frequencies may not particularly correlate to higher success rates; there may be a higher proportion of neurons that belong to the same brain areas, skewing the true success rates of each brain area since only total success is calculated.
+
 
 
 #### Figure 4: 
@@ -174,6 +178,7 @@ My findings during the EDA process pushed me to inquire further if brain area ha
 ### Data Integration:
 
 We wanted to test if k-means clustering can be performed to analyze the relationship between neural spike data and feedback type as a technique to reduce the complexity of our heterogenous data.
+
 
 
 #### Figure 5:
@@ -396,15 +401,25 @@ plot(roc_result_2, main="ROC Curve for Test 2 Data")
 ```
 
 
+The ROC curves for Test 1 and 2 Data indicate predictive capability of the model, although the curve is not situated as far to the top left corner as we would have wanted (indicating higher True Postive & Negative Rates).
+
+
 ### Discussion:
 
 Through this project we aimed to build a predictive model to forecast the outcome of each trial based on neural activity data and stimulus features. Our analysis focused on understanding the impact of various predictors on the logistic regression model's performance.
 
 Upon exploration, we found that predictors such as the difference in contrast levels and the clustering of mean spike rates, along with brain area, exhibited noticeable influence on the logistic regression model. The contrast difference, reflecting the salience of visual stimuli, emerged as a significant predictor, indicating its importance in determining the trial outcome. Additionally, incorporating clustering of mean spike rates allowed us to capture underlying patterns in neural activity across sessions, contributing to the predictive power of the model.
 
-However, while our initial model showed promising results, there is still ample room for improvement. In future endeavors, we intend to explore additional data integration methods to incorporate more predictors and enhance the model's accuracy further. Potential avenues include leveraging advanced feature engineering techniques, exploring alternative machine learning algorithms beyond logistic regression, and incorporating domain-specific knowledge to refine the model's performance.
+However, while our initial model showed promising results, there is still ample room for improvement. The average accuracy between test sets 1 and 2 came to be 58.27%, which was well below industry standards and disappointingly only slightly better than a case of the model guessing with a 50/50 chance. However, considering this was my first time building a prediction model from scratch, I view this as a major accomplishment in my experience with data analysis and machine learning. In future endeavors, we intend to explore additional data integration methods to incorporate more predictors and enhance the model's accuracy further. Potential avenues include leveraging advanced feature engineering techniques, exploring alternative machine learning algorithms beyond logistic regression, and incorporating domain-specific knowledge to refine the model's performance.
 
 By expanding our analysis to include a broader range of predictors and adopting more sophisticated modeling approaches, we aim to develop a more robust predictive model capable of accurately forecasting trial outcomes. Ultimately, such advancements hold the potential to deepen our understanding of neural processes underlying decision-making tasks and contribute to advancements in neuroscience research.
+
+
+
+### References:
+
+ChatGPT - Utilized for assistance with section writeups and data integration
+
 
 
 ##### Github Repo for Source Code: https://github.com/kaushalrrr/NeuralActivityProject
