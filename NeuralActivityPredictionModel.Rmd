@@ -1,0 +1,168 @@
+---
+title: "STA141-FinalProjectMain"
+author: "Kaushal"
+date: "2024-03-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(knitr)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(caret)
+
+
+# Load the data 
+session=list()
+for(i in 1:18){
+  session[[i]]=readRDS(paste('./sessions/session',i,'.rds',sep=''))
+}
+```
+```{r}
+names(session[[7]])
+session[[7]]$date_exp
+session[[7]]$contrast_left[[11]]
+session[[7]]$contrast_right[[11]]
+session[[7]]$feedback_type[[11]]
+session[[7]]$brain_area
+
+```
+```{r}
+n.session=length(session)
+
+meta <- tibble(
+  mouse_name = rep('name',n.session),
+  n_brain_area = rep(0,n.session),
+  n_neurons = rep(0,n.session),
+  n_trials = rep(0,n.session),
+  success_rate = rep(0,n.session)
+)
+
+for(i in 1:n.session){
+  tmp = session[[i]];
+  meta[i,1]=tmp$mouse_name;
+  meta[i,2]=length(unique(tmp$brain_area));
+  meta[i,3]=dim(tmp$spks[[1]])[1];
+  meta[i,4]=length(tmp$feedback_type);
+  meta[i,5]=mean(tmp$feedback_type+1)/2;
+}
+
+kable(meta, format = "html", table.attr = "class='table table-striped'",digits=2) 
+
+```
+```{r}
+get_trail_data <- function(session_id, trail_id){
+  spikes <- session[[session_id]]$spks[[trail_id]]
+  if (any(is.na(spikes))){
+    disp("value missing")
+  }
+
+  trail_tibble <- tibble("neuron_spike" = rowSums(spikes))  %>%  add_column("brain_area" = session[[session_id]]$brain_area ) %>% group_by(brain_area) %>% summarize( region_sum_spike = sum(neuron_spike), region_count = n(),region_mean_spike = mean(neuron_spike)) 
+  trail_tibble  = trail_tibble%>% add_column("trail_id" = trail_id) %>% add_column("contrast_left"= session[[session_id]]$contrast_left[trail_id]) %>% add_column("contrast_right"= session[[session_id]]$contrast_right[trail_id]) %>% add_column("feedback_type"= session[[session_id]]$feedback_type[trail_id])
+  trail_tibble
+}
+
+session_list <- vector("list", length = 18)
+
+get_session_data <- function(session_id){
+  n_trail <- length(session[[session_id]]$spks)
+  trail_list <- list()
+  for (trail_id in 1:n_trail){
+    trail_tibble <- get_trail_data(session_id,trail_id)
+    trail_list[[trail_id]] <- trail_tibble
+  }
+  session_tibble <- do.call(rbind, trail_list)
+  session_tibble <- session_tibble %>% add_column("mouse_name" = session[[session_id]]$mouse_name) %>% add_column("date_exp" = session[[session_id]]$date_exp) %>% add_column("session_id" = session_id) 
+  session_tibble
+}
+
+for (session_id in 1: 18){
+  session_list[[session_id]] <- get_session_data(session_id)
+}
+full_tibble <- do.call(rbind, session_list)
+full_tibble$success <- full_tibble$feedback_type == 1
+full_tibble$success <- as.numeric(full_tibble$success)
+full_tibble$contrast_diff <- abs(full_tibble$contrast_left-full_tibble$contrast_right)
+
+print(full_tibble)
+```
+```{r}
+
+# Create a dataframe with unique brain_area values
+bardata <- data.frame(brain_area = unique(full_tibble$brain_area))
+
+# Summarize successes for each brain_area
+bardata <- bardata %>%
+  mutate(successes = sapply(brain_area, function(area) sum(full_tibble$success[full_tibble$brain_area == area])))
+
+# Print the resulting dataframe
+print(bardata)
+ 
+#Barplot of Brain Area vs. Successes
+ggplot(bardata, aes(x = factor(brain_area), y = successes)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(title = "Bar Chart of Successes by Brain Area",
+       x = "Brain Area",
+       y = "Successes")
+
+```
+```{r}
+brain_area_data <- full_tibble %>%
+  group_by(trail_id) %>%
+  summarise(across(starts_with("region_mean_spike"), mean, na.rm = TRUE))
+
+
+# Scale the aggregated data before clustering
+scaled_data <- scale(select(brain_area_data, -trail_id))
+
+set.seed(123)  # Setting seed for reproducibility
+k <- 4  # 4 clusters
+clustering_results <- kmeans(scaled_data, centers = k, nstart = 25)
+
+# Add cluster assignments to the aggregated brain_area_data
+brain_area_data$cluster <- clustering_results$cluster
+
+# Merge the cluster assignments back to the full_tibble
+full_tibble <- full_tibble %>%
+  left_join(brain_area_data[, c("trail_id", "cluster")], by = "trail_id")
+
+# Ensuring categorical variables are factors and numerical variables are the correct type
+full_tibble <- full_tibble %>%
+  mutate(cluster = as.factor(cluster),
+         feedback_type = as.factor(feedback_type))
+```
+```{r}
+# Split data into training and testing sets
+set.seed(123)
+train_indices <- createDataPartition(full_tibble$feedback_type, p = 0.8, list = FALSE)
+train_data <- full_tibble[train_indices, ]
+test_data <- full_tibble[-train_indices, ]
+
+# Build the logistic regression model using the cluster as a predictor along with other variables
+model <- glm(feedback_type ~ cluster + contrast_diff + contrast_left + contrast_right,
+             data = train_data, family = binomial)
+
+# Summary of the model to check coefficients and significance
+summary(model)
+
+```
+```{r}
+# Make predictions on the test data
+prediction_probs <- predict(model, test_data, type = "response")
+predicted_classes <- ifelse(prediction_probs > 0.5, 1, 0)
+
+# Create a confusion matrix to evaluate the model
+confusion_matrix <- table(Predicted = predicted_classes, Actual = test_data$feedback_type)
+confusion_matrix
+
+# Calculate accuracy and other metrics as needed
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+print(paste("Accuracy:", accuracy))
+```
